@@ -37,6 +37,7 @@ import net.runelite.client.ui.NavigationButton;
  */
 @PluginDescriptor(
     name = "Personal UI Backgrounds",
+    internalName = "personal-ui-backgrounds",
     description = "Choose local images for your inventory and chatbox backgrounds",
     tags = {"inventory", "chatbox", "custom", "background", "image"}
 )
