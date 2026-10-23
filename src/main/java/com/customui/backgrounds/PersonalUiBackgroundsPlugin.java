@@ -3,9 +3,9 @@ package com.customui.backgrounds;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
+import java.io.InputStream;
+import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -29,6 +29,8 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.Filepath;
+
 
 /**
  * Replaces only interface background sprites. Inventory icons and chat text
@@ -172,7 +174,7 @@ public class PersonalUiBackgroundsPlugin extends Plugin
         {
             try
             {
-                BufferedImage image = readLocalImage(config.inventoryImagePath());
+                BufferedImage image = readSavedImage(config.inventoryImagePath());
                 for (int spriteId : INVENTORY_SPRITES)
                 {
                     applySprite(spriteId, image, config.inventoryOpacity(), config.inventoryScale(), false);
@@ -187,7 +189,7 @@ public class PersonalUiBackgroundsPlugin extends Plugin
         {
             try
             {
-                BufferedImage image = readLocalImage(config.chatboxImagePath());
+                BufferedImage image = readSavedImage(config.chatboxImagePath());
                 for (int spriteId : CHATBOX_SPRITES)
                 {
                     applySprite(spriteId, image, config.chatboxOpacity(), config.chatboxScale(), true);
@@ -215,29 +217,80 @@ public class PersonalUiBackgroundsPlugin extends Plugin
         lastError = lastError.isEmpty() ? message : lastError + " | " + message;
     }
 
-    private static BufferedImage readLocalImage(String path) throws IOException
+   
+void saveSelectedImage(String configKey, Filepath selected) throws IOException
+{
+    final String fileName;
+    if ("inventoryImagePath".equals(configKey))
     {
-        File file = new File(path.trim());
-        if (!file.isFile())
-        {
-            throw new IOException("File not found: " + path);
-        }
-        if (Files.size(file.toPath()) > MAX_FILE_SIZE_BYTES)
-        {
-            throw new IOException("Image is over 20 MB; please use a smaller PNG/JPG");
-        }
-        BufferedImage photo = ImageIO.read(file);
+        fileName = "inventory-background.img";
+    }
+    else if ("chatboxImagePath".equals(configKey))
+    {
+        fileName = "chatbox-background.img";
+    }
+    else
+    {
+        throw new IOException("Invalid image selection");
+    }
+
+    // Validate the selected image before saving it.
+    BufferedImage image = readFilepathImage(selected);
+    image.flush();
+
+    // Store the image inside this plugin's data directory.
+    Filepath directory = getPluginDirectory();
+    directory.createDirectories();
+    selected.copyTo(directory.joinSegment(fileName),
+        StandardCopyOption.REPLACE_EXISTING);
+
+    configManager.setConfiguration(
+        PersonalUiBackgroundsConfig.GROUP,
+        configKey, fileName);
+}
+
+BufferedImage readSavedImage(String fileName) throws IOException
+{
+    if (!"inventory-background.img".equals(fileName)
+        && !"chatbox-background.img".equals(fileName))
+    {
+        throw new IOException("Please select your image again using Browse");
+    }
+
+    Filepath file = getPluginDirectory().joinSegment(fileName);
+    return readFilepathImage(file);
+}
+
+private static BufferedImage readFilepathImage(Filepath file) throws IOException
+{
+    if (!file.isFile())
+    {
+        throw new IOException("Image file not found");
+    }
+
+    if (file.size() > MAX_FILE_SIZE_BYTES)
+    {
+        throw new IOException("Image is over 20 MB; please use a smaller PNG/JPG");
+    }
+
+    try (InputStream stream = file.openInputStream())
+    {
+        BufferedImage photo = ImageIO.read(stream);
         if (photo == null)
         {
-            throw new IOException("This file isn't a supported image (use PNG or JPG)");
+            throw new IOException("Unsupported image; use PNG or JPG");
         }
-        if (photo.getWidth() > MAX_IMAGE_DIMENSION || photo.getHeight() > MAX_IMAGE_DIMENSION)
+
+        if (photo.getWidth() > MAX_IMAGE_DIMENSION
+            || photo.getHeight() > MAX_IMAGE_DIMENSION)
         {
             photo.flush();
             throw new IOException("Image is larger than 8192 px; resize it first");
         }
+
         return photo;
     }
+}
 
     private void applySprite(int id, BufferedImage photo, int strength, ScalingMode scaleMode, boolean chatbox)
     {
