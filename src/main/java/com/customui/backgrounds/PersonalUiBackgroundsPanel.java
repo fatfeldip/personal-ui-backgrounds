@@ -7,21 +7,21 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
-import javax.imageio.ImageIO;
+import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JFileChooser;
+
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
-import javax.swing.filechooser.FileNameExtensionFilter;
+
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.Filepath;
 
 /** Simple browse buttons and thumbnails; other settings live in RuneLite configuration. */
 final class PersonalUiBackgroundsPanel extends PluginPanel
@@ -87,24 +87,33 @@ final class PersonalUiBackgroundsPanel extends PluginPanel
 
         JButton choose = new JButton("Browse for image...");
         choose.setAlignmentX(LEFT_ALIGNMENT);
-        choose.addActionListener(e ->
-        {
-            JFileChooser picker = new JFileChooser();
-            picker.setDialogTitle("Select " + title + " image");
-            picker.setFileFilter(new FileNameExtensionFilter("PNG or JPG images", "png", "jpg", "jpeg"));
-            picker.setAcceptAllFileFilterUsed(false);
-            String old = configManager.getConfiguration(PersonalUiBackgroundsConfig.GROUP, configKey);
-            if (old != null && !old.isEmpty() && new File(old).getParentFile() != null)
-            {
-                picker.setCurrentDirectory(new File(old).getParentFile());
-            }
-            if (picker.showOpenDialog(this) == JFileChooser.APPROVE_OPTION)
-            {
-                configManager.setConfiguration(PersonalUiBackgroundsConfig.GROUP,
-                    configKey, picker.getSelectedFile().getAbsolutePath());
-                refresh();
-            }
-        });
+      
+choose.addActionListener(e ->
+{
+    Filepath.Chooser picker = new Filepath.Chooser()
+        .setIsOpen()
+        .setAcceptsFiles()
+        .setDialogTitle("Select " + title + " image")
+        .addExtensionFilter("PNG or JPG images", "png", "jpg", "jpeg");
+
+    List<Filepath> selected = picker.showDialog(this);
+    if (selected == null || selected.isEmpty())
+    {
+        return;
+    }
+
+    try
+    {
+        plugin.saveSelectedImage(configKey, selected.get(0));
+        refresh();
+    }
+    catch (IOException ex)
+    {
+        status.setText("<html><font color='#FF7777'>"
+            + escapeHtml(ex.getMessage()) + "</font></html>");
+    }
+});
+
         parent.add(choose);
 
         JButton clear = new JButton("Clear image");
@@ -129,7 +138,7 @@ final class PersonalUiBackgroundsPanel extends PluginPanel
             : "<html><font color='#FF7777'>" + escapeHtml(error) + "</font></html>");
     }
 
-    private static void setPreview(JLabel target, String path)
+    private void setPreview(JLabel target, String path)
     {
         target.setIcon(null);
         if (path == null || path.trim().isEmpty())
@@ -137,15 +146,11 @@ final class PersonalUiBackgroundsPanel extends PluginPanel
             target.setText("No image selected");
             return;
         }
-        File file = new File(path);
-        if (!file.isFile() || file.length() > 20L * 1024L * 1024L)
-        {
-            target.setText("File missing or too large");
-            return;
-        }
-        try
-        {
-            BufferedImage source = ImageIO.read(file);
+       
+try
+{
+    BufferedImage source = plugin.readSavedImage(path);
+
             if (source == null)
             {
                 target.setText("Invalid image");
